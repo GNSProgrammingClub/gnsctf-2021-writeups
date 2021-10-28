@@ -30,8 +30,8 @@ It is important to figure out the correct libc version on the server, since they
 With the offsets in hand, and a callback to main, we can simply use the buffer overflow to return directly to the libc system function with argument "/bin/sh", giving us shell.
 We can `cat flag.txt` on the server and get the flag.
 
-For more info on the PLT and GOT you can refer to the following: https://www.technovelty.org/linux/plt-and-got-the-key-to-code-sharing-and-dynamic-libraries.html
-For more info on ret2libc exploits you can refer to the following: https://youtu.be/m17mV24TgwY
-A more detailed video writeup is available here: (not yet available)
+- For more info on the PLT and GOT you can refer to the following: https://www.technovelty.org/linux/plt-and-got-the-key-to-code-sharing-and-dynamic-libraries.html
+- For more info on ret2libc exploits you can refer to the following: https://youtu.be/m17mV24TgwY
+- A more detailed video writeup is available here: (not yet available)
 
 Flag: `gnsCTF{r34d_m0r3_b00ks_1n_th3_l1br4ry}`
