@@ -1,4 +1,4 @@
-<No written writeup available>
+*No written writeup available*
 
 Look here for video writeup: https://www.youtube.com/watch?v=a8wWPVTVuXo
 
