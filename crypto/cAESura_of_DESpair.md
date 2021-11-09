@@ -9,9 +9,13 @@ Our first command is:
 `openssl enc -aes-256-cbc -d -in out.enc -out part.enc -k IRyS`
 
 `aes-256-cbc` - cipher type
+
 `-d` - Tells openssl that we are decrypting<br>
+
 `-in` - Our input file
+
 `-out` - Our output file
+
 `-k` - Gives the password `IRyS` (provided by problem text)
 
 Our second command is identical except for the change in cipher type (DES).
